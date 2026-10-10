@@ -1,0 +1,274 @@
+### orbstack에서 linux를 선택하여 이름을 agent-server로 설정한후 22.04로 세팅하여 vm을 생성한다.
+
+### (임시) gui환경으로 생성한 vm환경을 클릭하여 (agent-server) terminal환경으로 접속한다.
+
+### 확인해보니 ssh가 깔려있지 않았다.
+
+### sudo apt update && sudo apt install openssh-server -y 하여 ssh를 설치한다.
+
+```bash
+sudo apt update && sudo apt install openssh-server -y
+```
+
+### sudo vim /etc/ssh/sshd_config에서 #Port 22를 Port 20022로 바꾼다.
+(주석인 #Port 22 를 Port 20022로 바꾼것)
+
+```bash
+sudo vim /etc/ssh/sshd_config
+```
+
+### ssh 설정을 적용하기 위해서 sudo systemctl restart ssh를 입력함
+
+```bash
+sudo systemctl restart ssh
+```
+
+### ssh 포트가 잘켜져있는지 확인하자
+
+```bash
+sudo ss -tulnp | grep 20022
+
+# tcp   LISTEN 0      128                0.0.0.0:20022      0.0.0.0:*    users:(("sshd",pid=3631,fd=3))           
+# tcp   LISTEN 0      128                   [::]:20022         [::]:*    users:(("sshd",pid=3631,fd=4))           
+# ghwo61351@agent-server:/Users/ghwo61351/tasks_ghwo6/B04-01$ 
+```
+
+### sudo apt install ufw -y 를 입력해 방화벽을 설치한다.
+
+```bash
+sudo apt install ufw -y
+```
+
+### 아래처럼 입력하여 방화벽을 작동 시킨다.
+
+```bash
+sudo ufw allow 20022/tcp
+sudo ufw allow 15034/tcp
+sudo ufw enable
+```
+
+### 0.0.0.0:15034 LISTEN 상태 확인
+
+```bash
+sudo ss -tulnp | grep 15034
+
+# tcp   LISTEN 0      1                  0.0.0.0:15034      0.0.0.0:*    users:(("agent-app",pid=3843,fd=4))      
+
+```
+
+### 그룹을 추가함
+
+```bash
+sudo groupadd agent-common
+sudo groupadd agent-core
+```
+
+### 사용자 계정을 추가함
+
+```bash
+# 1. agent-admin: common과 core 그룹 모두 포함
+sudo useradd -m -s /bin/bash -G agent-common,agent-core agent-admin
+
+# 2. agent-dev: common과 core 그룹 모두 포함
+sudo useradd -m -s /bin/bash -G agent-common,agent-core agent-dev
+
+# 3. agent-test: common 그룹에만 포함
+sudo useradd -m -s /bin/bash -G agent-common agent-test
+```
+
+### 잘 입력 됬는지 내역을 확인함
+
+```bash
+id agent-admin; id agent-dev; id agent-test
+
+# uid=1000(agent-admin) gid=1002(agent-admin) groups=1002(agent-admin),1000(agent-common),1001(agent-core)
+# uid=1001(agent-dev) gid=1003(agent-dev) groups=1003(agent-dev),1000(agent-common),1001(agent-core)
+# uid=1002(agent-test) gid=1004(agent-test) groups=1004(agent-test),1000(agent-common)
+
+```
+
+### 디렉터리 구조 생성
+
+```bash
+export AGENT_HOME=/home/agent-admin/agent-app
+sudo mkdir -p $AGENT_HOME/upload_files
+sudo mkdir -p $AGENT_HOME/api_keys
+sudo mkdir -p $AGENT_HOME/bin
+sudo mkdir -p /var/log/agent-app
+```
+
+### 소유권과 권한 설정
+
+```bash
+
+# chown은 소유자를 결정하는것
+# chmod는 접근 권할을 설정하는것
+
+sudo chown agent-admin:agent-common $AGENT_HOME/upload_files
+sudo chmod 750 $AGENT_HOME/upload_files
+
+sudo chown agent-admin:agent-core $AGENT_HOME/api_keys
+sudo chmod 750 $AGENT_HOME/api_keys
+
+sudo chown agent-dev:agent-core $AGENT_HOME/bin
+sudo chmod 750 $AGENT_HOME/bin
+
+sudo chown agent-admin:agent-core /var/log/agent-app
+sudo chmod 750 /var/log/agent-app
+
+```
+
+### 권한 설정 최종 확인
+
+```bash
+
+sudo ls -ld $AGENT_HOME/upload_files $AGENT_HOME/api_keys $AGENT_HOME/bin /var/log/agent-app
+
+drwxr-x--- 1 agent-admin agent-core   20 Oct 11 21:27 /home/agent-admin/agent-app/api_keys
+drwxr-x--- 1 agent-dev   agent-core   38 Oct 11 22:11 /home/agent-admin/agent-app/bin
+drwxr-x--- 1 agent-admin agent-common  0 Oct 11 20:25 /home/agent-admin/agent-app/upload_files
+drwxr-x--- 1 agent-admin agent-core   40 Oct 11 22:10 /var/log/agent-app
+
+# drwxrwxrwx에서
+# rwx : 7
+# r-x : 5
+# --- : 0
+# 잘 절용됨
+```
+
+
+### api키를 만듭니다.
+
+```bash
+echo "agent_api_key_test" | sudo tee $AGENT_HOME/api_keys/secret.key > /dev/null
+```
+
+### api키의 권한과 소유를 설정합니다.
+
+```bash
+sudo chown agent-admin:agent-core $AGENT_HOME/api_keys/secret.key
+sudo chmod 640 $AGENT_HOME/api_keys/secret.key
+```
+### api키의 권한이 잘 들어갔는지 확인합니다.
+
+```bash
+sudo ls -l $AGENT_HOME/api_keys/secret.key
+```
+
+
+### 앱 구동을 위한 변수 5개 등록
+
+```bash
+export AGENT_PORT=15034
+export AGENT_UPLOAD_DIR=$AGENT_HOME/upload_files
+export AGENT_KEY_PATH=$AGENT_HOME/api_keys/
+export AGENT_LOG_DIR=/var/log/agent-app
+```
+
+### 환경변수가 잘 입력 됬는지 확인한다.
+
+```bash
+env | grep AGENT_
+```
+
+### 제공된 파일을 실행하기 위해서 아키텍처가 arm인지 인텔인지 확인함
+
+```bash
+uname -m
+
+# x86_64
+```
+
+### 실행 파일을 복사한다.
+
+```bash
+sudo cp /Users/ghwo61351/tasks_ghwo6/B04-01/misc/agent-app/agent-app-linux-x86 $AGENT_HOME/bin/agent-app
+```
+
+### 파일을 확인한다.
+
+```bash
+sudo ls -al $AGENT_HOME/bin
+
+# total 6348
+# drwxrwx--- 1 agent-dev agent-core      18 Oct 11 20:59 .
+# drwxr-xr-x 1 root      root            46 Oct 11 20:25 ..
+# -rwxr-xr-x 1 root      root       6498144 Oct 11 20:59 agent-app
+```
+
+### 소유권을 설정한다.
+
+```bash
+sudo chown agent-dev:agent-core $AGENT_HOME/bin/agent-app
+```
+
+### 소유권이 잘 바꼇는지 확인함
+
+```bash
+sudo ls -al $AGENT_HOME/bin
+
+# total 6348
+# drwxrwx--- 1 agent-dev agent-core      18 Oct 11 20:59 .
+# drwxr-xr-x 1 root      root            46 Oct 11 20:25 ..
+# -rwxr-xr-x 1 agent-dev agent-core 6498144 Oct 11 20:59 agent-app
+```
+
+### (fix) 다른 계정의 폴더에 접근하지 못하는 리눅스 권한 이슈 해결
+
+```bash
+sudo chmod +x /home/agent-admin
+```
+
+
+### 파일을 실행함
+
+```bash
+sudo -E -u agent-dev $AGENT_HOME/bin/agent-app
+```
+
+### monitor.sh 복사
+
+```bash
+sudo cp /Users/ghwo61351/tasks_ghwo6/B04-01/bin/monitor.sh $AGENT_HOME/bin/monitor.sh
+```
+
+### 복사 확인
+
+```bash
+sudo ls -l $AGENT_HOME/bin/
+
+# total 6352
+# -rwxr-xr-x 1 agent-dev agent-core 6498144 Oct 11 20:59 agent-app
+# -rw-r--r-- 1 root      root           946 Oct 11 22:01 monitor.sh
+# ghwo61351@agnet-server:/Users/ghwo61351/tasks_ghwo6/B04-01$ 
+```
+
+### 스크립트 소유권 및 실행 권한 부여
+
+```bash
+sudo chown agent-dev:agent-core $AGENT_HOME/bin/monitor.sh
+sudo chmod +x $AGENT_HOME/bin/monitor.sh
+```
+
+### 소유권 변화 확인
+
+```bash
+sudo ls -l $AGENT_HOME/bin/
+
+# total 6352
+# -rwxr-xr-x 1 agent-dev agent-core 6498144 Oct 11 20:59 agent-app
+# -rwxr-xr-x 1 agent-dev agent-core     946 Oct 11 22:01 monitor.sh
+# ghwo61351@agnet-server:/Users/ghwo61351/tasks_ghwo6/B04-01$ 
+```
+
+### agent-app 실행
+
+```bash
+sudo -u agent-dev $AGENT_HOME/bin/monitor.sh
+```
+
+### 
+
+```bash
+
+```
