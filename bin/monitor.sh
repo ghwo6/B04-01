@@ -1,19 +1,48 @@
 #!/bin/bash
 
-# 1. 환경변수 세팅 (스크립트 단독 실행을 위해 내부에 고정)
-export AGENT_HOME=/home/agent-admin/agent-app
-export AGENT_PORT=15034
-export AGENT_UPLOAD_DIR=$AGENT_HOME/upload_files
-export AGENT_KEY_PATH=$AGENT_HOME/api_keys
-export AGENT_LOG_DIR=/var/log/agent-app
+AGENT_HOME=/home/agent-admin/agent-app
+LOG_DIR=/var/log/agent-app
+LOG_FILE=${LOG_DIR}/monitor.log
 
-# 2. 프로세스 감시 및 백그라운드 실행 로직
-# pgrep으로 agent-app이 실행 중인지 찾고, 없으면 if문 실행함
+# 1. 프로세스 및 포트 확인 (미실행 시 exit 1)
 if ! pgrep -x "agent-app" > /dev/null; then
-    echo "[$(date)] agent-app이 꺼져있습니다. 백그라운드에서 재시작을 시도합니다."
-    # nohup: 터미널을 꺼도 앱이 죽지 않게 보호 / &: 백그라운드로 실행함
-    # 로그 화면은 app.log 파일로 밀어 넣는다.
-    nohup $AGENT_HOME/bin/agent-app > $AGENT_LOG_DIR/app.log 2>&1 &
-else
-    echo "[$(date)] agent-app이 정상적으로 실행 중입니다."
+    exit 1
+fi
+PID=$(pgrep -x "agent-app" | head -n1)
+
+if ! ss -tuln | grep -q ":15034"; then
+    exit 1
+fi
+
+# 2. 자원 수집 로직
+CPU_IDLE=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/")
+CPU_USED=$(awk "BEGIN {print 100 - $CPU_IDLE}")
+CPU_INT=${CPU_USED%.*}
+
+MEM_TOTAL=$(free | grep Mem | awk '{print $2}')
+MEM_USED_VAL=$(free | grep Mem | awk '{print $3}')
+MEM_USED=$(awk "BEGIN {printf \"%.1f\", ($MEM_USED_VAL/$MEM_TOTAL)*100}")
+MEM_INT=${MEM_USED%.*}
+
+DISK_USED=$(df -h / | tail -1 | awk '{print $5}' | sed 's/%//')
+
+# 3. 임계치 및 방화벽 경고 (Warning)
+WARN_MSG=""
+if [ "$CPU_INT" -gt 20 ]; then WARN_MSG="${WARN_MSG} [WARNING] CPU > 20%"; fi
+if [ "$MEM_INT" -gt 10 ]; then WARN_MSG="${WARN_MSG} [WARNING] MEM > 10%"; fi
+if [ "$DISK_USED" -gt 80 ]; then WARN_MSG="${WARN_MSG} [WARNING] DISK_USED > 80%"; fi
+if [ "$(systemctl is-active ufw)" != "active" ]; then WARN_MSG="${WARN_MSG} [WARNING] 방화벽 비활성화"; fi
+
+# 4. 로그 파일 기록
+LOG_OUTPUT="[$(date '+%Y-%m-%d %H:%M:%S')] PID:$PID CPU:${CPU_USED}% MEM:${MEM_USED}% DISK_USED:${DISK_USED}%${WARN_MSG}"
+echo "$LOG_OUTPUT" >> "$LOG_FILE"
+
+# 5. 로그 파일 용량 관리 (Rotation) - 10MB(10485760 bytes) 초과 시 10개 보존
+LOG_SIZE=$(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0)
+if [ "$LOG_SIZE" -gt 10485760 ]; then
+    for i in {9..1}; do
+        [ -f "${LOG_FILE}.$i" ] && mv "${LOG_FILE}.$i" "${LOG_FILE}.$((i+1))"
+    done
+    mv "$LOG_FILE" "${LOG_FILE}.1"
+    touch "$LOG_FILE"
 fi
