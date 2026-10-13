@@ -15,10 +15,15 @@ sudo apt update && sudo apt install openssh-server ufw acl -y
 ```
 
 ### sudo vim /etc/ssh/sshd_config에서 #Port 22를 Port 20022로 바꾼다.
-(주석인 #Port 22 를 Port 20022로 바꾼것)
 
 ```bash
 sudo vim /etc/ssh/sshd_config
+```
+
+```vim
+#Port 22 -> Port 20022
+#PermitRootLogin prohibit-password -> PermitRootLogin no 로 바꾼다.
+
 ```
 
 ### ssh 설정을 적용하기 위해서 sudo systemctl restart ssh를 입력함
@@ -81,11 +86,18 @@ id agent-admin; id agent-dev; id agent-test
 
 ```bash
 export AGENT_HOME=/home/agent-admin/agent-app
+
 sudo mkdir -p $AGENT_HOME/upload_files
 sudo mkdir -p $AGENT_HOME/api_keys
 sudo mkdir -p $AGENT_HOME/bin
 sudo mkdir -p /var/log/agent-app
 ```
+
+### (fix) 다른 계정이 agent-admin 홈 아래로 들어갈 수 있게 권한 설정
+```bash
+sudo chmod +x /home/agent-admin
+```
+
 
 ### 소유권과 권한 설정
 
@@ -94,17 +106,22 @@ sudo mkdir -p /var/log/agent-app
 # chown은 소유자를 결정하는것
 # chmod는 접근 권할을 설정하는것
 
+# upload_files: agent-common R/W  → 770 (이전 750에서 변경)
 sudo chown agent-admin:agent-common $AGENT_HOME/upload_files
-sudo chmod 750 $AGENT_HOME/upload_files
+sudo chmod 770 $AGENT_HOME/upload_files
 
+# api_keys: agent-core R/W  → 770 (이전 750에서 변경)
 sudo chown agent-admin:agent-core $AGENT_HOME/api_keys
-sudo chmod 750 $AGENT_HOME/api_keys
+sudo chmod 770 $AGENT_HOME/api_keys
 
+# bin: 스크립트 위치
 sudo chown agent-dev:agent-core $AGENT_HOME/bin
 sudo chmod 750 $AGENT_HOME/bin
 
+# 로그: agent-core R/W  → 770 + ACL
 sudo chown agent-dev:agent-core /var/log/agent-app
-sudo chmod 750 /var/log/agent-app
+sudo chmod 770 /var/log/agent-app
+sudo setfacl -m u:agent-admin:rwx /var/log/agent-app
 
 ```
 
@@ -131,16 +148,16 @@ getfacl /var/log/agent-app
 
 sudo ls -ld $AGENT_HOME/upload_files $AGENT_HOME/api_keys $AGENT_HOME/bin /var/log/agent-app
 
-# drwxr-x--- 1 agent-admin agent-core   20 Oct 11 21:27 /home/agent-admin/agent-app/api_keys
-# drwxr-x--- 1 agent-dev   agent-core   38 Oct 11 22:11 /home/agent-admin/agent-app/bin
-# drwxr-x--- 1 agent-admin agent-common  0 Oct 11 20:25 /home/agent-admin/agent-app/upload_files
-# drwxr-x--- 1 agent-admin agent-core   40 Oct 11 22:10 /var/log/agent-app
+# drwxrwx---  1 agent-admin agent-core   24 Oct 13 20:46 /home/agent-admin/agent-app/api_keys
+# drwxr-x---  1 agent-dev   agent-core    0 Oct 13 20:12 /home/agent-admin/agent-app/bin
+# drwxrwx---  1 agent-admin agent-common  0 Oct 13 20:12 /home/agent-admin/agent-app/upload_files
+# drwxrwx---+ 1 agent-dev   agent-core    0 Oct 13 20:12 /var/log/agent-app
 
 # drwxrwxrwx에서
 # rwx : 7
 # r-x : 5
 # --- : 0
-# 잘 절용됨
+
 ```
 
 
@@ -161,7 +178,7 @@ sudo chmod 640 $AGENT_HOME/api_keys/secret.key
 ```bash
 sudo ls -l $AGENT_HOME/api_keys/secret.key
 
-# -rw-r----- 1 agent-admin agent-core 19 Oct 12 16:17 /home/agent-admin/agent-app/api_keys/secret.key
+# -rw-r----- 1 agent-admin agent-core 19 Oct 13 20:53 /home/agent-admin/agent-app/api_keys/secret.key
 ```
 
 
@@ -222,17 +239,13 @@ sudo ls -al $AGENT_HOME/bin
 # -rwxr-xr-x 1 agent-dev agent-core 6498144 Oct 11 20:59 agent-app
 ```
 
-### (fix) 다른 계정의 폴더에 접근하지 못하는 리눅스 권한 이슈 해결
-
-```bash
-sudo chmod +x /home/agent-admin
-```
-
 
 ### 파일을 실행함
 
 ```bash
-sudo -E -u agent-dev nohup $AGENT_HOME/bin/agent-app > /var/log/agent-app/app.log 2>&1 &
+
+sudo -E -u agent-dev bash -c 'nohup $AGENT_HOME/bin/agent-app > /var/log/agent-app/app.log 2>&1 &'
+# PDF에는 t_secret.key로 되어 있지만, 제공된 앱이 secret.key를 요구해서 secret.key로 생성했다
 
 # sudo -E -u agent-dev $AGENT_HOME/bin/agent-app
 ```
