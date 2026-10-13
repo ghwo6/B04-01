@@ -2,12 +2,16 @@
 
 ### (임시) gui환경으로 생성한 vm환경을 클릭하여 (agent-server) terminal환경으로 접속한다.
 
-### 확인해보니 ssh가 깔려있지 않았다.
+### cd 명령어를 이용해 /User/~~하여 B04-01로 이동한다.
 
-### sudo apt update && sudo apt install openssh-server -y 하여 ssh를 설치한다.
+### 확인해보니 ssh가 깔려있지 않았다.
+### 나중에 설치해야하는 ufw 와 acl도 같이 설치한다.
+### sudo apt install ufw -y 를 입력해 방화벽을 설치한다.
+### getfacl명령어를 쓰기 위해서 getfacl를 설치한다.
+
 
 ```bash
-sudo apt update && sudo apt install openssh-server -y
+sudo apt update && sudo apt install openssh-server ufw acl -y
 ```
 
 ### sudo vim /etc/ssh/sshd_config에서 #Port 22를 Port 20022로 바꾼다.
@@ -23,7 +27,7 @@ sudo vim /etc/ssh/sshd_config
 sudo systemctl restart ssh
 ```
 
-### ssh 포트가 잘켜져있는지 확인하자
+### ssh 포트가 잘 켜져있는지 확인하자
 
 ```bash
 sudo ss -tulnp | grep 20022
@@ -33,11 +37,6 @@ sudo ss -tulnp | grep 20022
 # ghwo61351@agent-server:/Users/ghwo61351/tasks_ghwo6/B04-01$ 
 ```
 
-### sudo apt install ufw -y 를 입력해 방화벽을 설치한다.
-
-```bash
-sudo apt install ufw -y
-```
 
 ### 아래처럼 입력하여 방화벽을 작동 시킨다.
 
@@ -45,15 +44,6 @@ sudo apt install ufw -y
 sudo ufw allow 20022/tcp
 sudo ufw allow 15034/tcp
 sudo ufw enable
-```
-
-### 0.0.0.0:15034 LISTEN 상태 확인
-
-```bash
-sudo ss -tulnp | grep 15034
-
-# tcp   LISTEN 0      1                  0.0.0.0:15034      0.0.0.0:*    users:(("agent-app",pid=3843,fd=4))      
-
 ```
 
 ### 그룹을 추가함
@@ -113,9 +103,26 @@ sudo chmod 750 $AGENT_HOME/api_keys
 sudo chown agent-dev:agent-core $AGENT_HOME/bin
 sudo chmod 750 $AGENT_HOME/bin
 
-sudo chown agent-admin:agent-core /var/log/agent-app
+sudo chown agent-dev:agent-core /var/log/agent-app
 sudo chmod 750 /var/log/agent-app
 
+```
+
+### 권한 부여
+
+```bash
+sudo setfacl -m u:agent-admin:rwx /var/log/agent-app
+getfacl /var/log/agent-app
+
+# getfacl: Removing leading '/' from absolute path names
+# # file: var/log/agent-app
+# # owner: agent-dev
+# # group: agent-core
+# user::rwx
+# user:agent-admin:rwx
+# group::r-x
+# mask::rwx
+# other::---
 ```
 
 ### 권한 설정 최종 확인
@@ -124,10 +131,10 @@ sudo chmod 750 /var/log/agent-app
 
 sudo ls -ld $AGENT_HOME/upload_files $AGENT_HOME/api_keys $AGENT_HOME/bin /var/log/agent-app
 
-drwxr-x--- 1 agent-admin agent-core   20 Oct 11 21:27 /home/agent-admin/agent-app/api_keys
-drwxr-x--- 1 agent-dev   agent-core   38 Oct 11 22:11 /home/agent-admin/agent-app/bin
-drwxr-x--- 1 agent-admin agent-common  0 Oct 11 20:25 /home/agent-admin/agent-app/upload_files
-drwxr-x--- 1 agent-admin agent-core   40 Oct 11 22:10 /var/log/agent-app
+# drwxr-x--- 1 agent-admin agent-core   20 Oct 11 21:27 /home/agent-admin/agent-app/api_keys
+# drwxr-x--- 1 agent-dev   agent-core   38 Oct 11 22:11 /home/agent-admin/agent-app/bin
+# drwxr-x--- 1 agent-admin agent-common  0 Oct 11 20:25 /home/agent-admin/agent-app/upload_files
+# drwxr-x--- 1 agent-admin agent-core   40 Oct 11 22:10 /var/log/agent-app
 
 # drwxrwxrwx에서
 # rwx : 7
@@ -153,6 +160,8 @@ sudo chmod 640 $AGENT_HOME/api_keys/secret.key
 
 ```bash
 sudo ls -l $AGENT_HOME/api_keys/secret.key
+
+# -rw-r----- 1 agent-admin agent-core 19 Oct 12 16:17 /home/agent-admin/agent-app/api_keys/secret.key
 ```
 
 
@@ -223,7 +232,9 @@ sudo chmod +x /home/agent-admin
 ### 파일을 실행함
 
 ```bash
-sudo -E -u agent-dev $AGENT_HOME/bin/agent-app
+sudo -E -u agent-dev nohup $AGENT_HOME/bin/agent-app > /var/log/agent-app/app.log 2>&1 &
+
+# sudo -E -u agent-dev $AGENT_HOME/bin/agent-app
 ```
 
 ### monitor.sh 복사
@@ -247,7 +258,7 @@ sudo ls -l $AGENT_HOME/bin/
 
 ```bash
 sudo chown agent-dev:agent-core $AGENT_HOME/bin/monitor.sh
-sudo chmod +x $AGENT_HOME/bin/monitor.sh
+sudo chmod 750 $AGENT_HOME/bin/monitor.sh
 ```
 
 ### 소유권 변화 확인
@@ -261,11 +272,45 @@ sudo ls -l $AGENT_HOME/bin/
 # ghwo61351@agnet-server:/Users/ghwo61351/tasks_ghwo6/B04-01$ 
 ```
 
-### agent-app 실행
+### 모니터링 스크립트 실행
 
 ```bash
-sudo -u agent-dev $AGENT_HOME/bin/monitor.sh
+sudo -u agent-admin $AGENT_HOME/bin/monitor.sh
 ```
+
+
+### 0.0.0.0:15034 LISTEN 상태 확인
+
+```bash
+sudo ss -tulnp | grep 15034
+
+# tcp   LISTEN 0      1                  0.0.0.0:15034      0.0.0.0:*    users:(("agent-app",pid=3843,fd=4))      
+```
+
+
+### 크론탭 등록
+
+```bash
+sudo crontab -e -u agent-admin
+
+# 에디터 맨 아래에 
+# * * * * * /home/agent-admin/agent-app/bin/monitor.sh 라고 입력함
+
+# 에디터를 나오면
+
+# crontab: installing new crontab
+
+# 라고 출력함
+
+```
+
+
+### monitor.log 확인
+
+```bash
+sudo cat /var/log/agent-app/monitor.log
+```
+
 
 ### 
 
