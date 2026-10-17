@@ -136,7 +136,7 @@ getfacl /var/log/agent-app
 # # group: agent-core
 # user::rwx
 # user:agent-admin:rwx
-# group::r-x
+# group::rwx
 # mask::rwx
 # other::---
 ```
@@ -188,6 +188,10 @@ export AGENT_PORT=15034
 export AGENT_UPLOAD_DIR=$AGENT_HOME/upload_files
 export AGENT_KEY_PATH=$AGENT_HOME/api_keys/
 export AGENT_LOG_DIR=/var/log/agent-app
+
+# AGENT_HOME은 디렉터리 구조 생성 단계에서 먼저 export함 (총 5개)
+# PDF는 AGENT_KEY_PATH를 키 파일 경로(.../t_secret.key)로 안내하지만,
+# 제공된 앱은 이 디렉터리 안에서 secret.key를 찾기 때문에 디렉터리 경로로 설정했다
 ```
 
 ### 환경변수가 잘 입력 됬는지 확인한다.
@@ -216,7 +220,7 @@ sudo cp /Users/ghwo61351/tasks_ghwo6/B04-01/misc/agent-app/agent-app-linux-x86 $
 sudo ls -al $AGENT_HOME/bin
 
 # total 6348
-# drwxrwx--- 1 agent-dev agent-core      18 Oct 11 20:59 .
+# drwxr-x--- 1 agent-dev agent-core      18 Oct 11 20:59 .
 # drwxr-xr-x 1 root      root            46 Oct 11 20:25 ..
 # -rwxr-xr-x 1 root      root       6498144 Oct 11 20:59 agent-app
 ```
@@ -233,7 +237,7 @@ sudo chown agent-dev:agent-core $AGENT_HOME/bin/agent-app
 sudo ls -al $AGENT_HOME/bin
 
 # total 6348
-# drwxrwx--- 1 agent-dev agent-core      18 Oct 11 20:59 .
+# drwxr-x--- 1 agent-dev agent-core      18 Oct 11 20:59 .
 # drwxr-xr-x 1 root      root            46 Oct 11 20:25 ..
 # -rwxr-xr-x 1 agent-dev agent-core 6498144 Oct 11 20:59 agent-app
 ```
@@ -281,12 +285,16 @@ sudo ls -l $AGENT_HOME/bin/
 # total 6356
 # -rwxr-xr-x 1 root      root       6498144 Oct 17 20:03 agent-app
 # -rwxr-x--- 1 agent-dev agent-core    4385 Oct 17 20:31 monitor.sh
+
+# agent-app은 10/17에 다시 cp하면서 소유자가 root로 돌아감 (cp한 사용자 소유가 됨)
+# 실행에는 문제 없지만 일관성을 위해 아래 명령으로 다시 소유권을 맞춘다
+# sudo chown agent-dev:agent-core $AGENT_HOME/bin/agent-app
 ```
 
 ### 모니터링 스크립트 실행
 
 ```bash
-sudo -u agent-admin /monitor.sh
+sudo -u agent-admin $AGENT_HOME/bin/monitor.sh
 ```
 
 
@@ -320,11 +328,4 @@ sudo crontab -e -u agent-admin
 
 ```bash
 sudo cat /var/log/agent-app/monitor.log
-```
-
-
-### 
-
-```bash
-
 ```
