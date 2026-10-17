@@ -125,10 +125,9 @@ sudo setfacl -m u:agent-admin:rwx /var/log/agent-app
 
 ```
 
-### 권한 부여
+### 권한 부여 확인
 
 ```bash
-sudo setfacl -m u:agent-admin:rwx /var/log/agent-app
 getfacl /var/log/agent-app
 
 # getfacl: Removing leading '/' from absolute path names
