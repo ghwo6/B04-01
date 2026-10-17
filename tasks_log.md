@@ -278,16 +278,15 @@ sudo chmod 750 $AGENT_HOME/bin/monitor.sh
 ```bash
 sudo ls -l $AGENT_HOME/bin/
 
-# total 6352
-# -rwxr-xr-x 1 agent-dev agent-core 6498144 Oct 11 20:59 agent-app
-# -rwxr-xr-x 1 agent-dev agent-core     946 Oct 11 22:01 monitor.sh
-# ghwo61351@agnet-server:/Users/ghwo61351/tasks_ghwo6/B04-01$ 
+# total 6356
+# -rwxr-xr-x 1 root      root       6498144 Oct 17 20:03 agent-app
+# -rwxr-x--- 1 agent-dev agent-core    4385 Oct 17 20:31 monitor.sh
 ```
 
 ### 모니터링 스크립트 실행
 
 ```bash
-sudo -u agent-admin $AGENT_HOME/bin/monitor.sh
+sudo -u agent-admin /monitor.sh
 ```
 
 
